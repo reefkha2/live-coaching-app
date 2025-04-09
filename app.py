@@ -44,6 +44,31 @@ if st.sidebar.button("📂 Load Victim Profile"):
         st.session_state.summary = data
         st.success("Victim profile loaded")
 
+# --- SCENARIO MAP (Follow-Up Sessions by Risk Level) ---
+scenario_map = {
+    # 🟢 Low Risk: SA001
+    "SA001": [
+        "مرحبًا، حبيت أبلغك إن وضعي تحسن الحمد لله.",
+        "صرت أقدر أتعامل مع الضغط وأطبق تمارين الاسترخاء اللي علمتيني عليها.",
+        "شكرًا لدعمك المستمر، أشوفك الأسبوع القادم بإذن الله."
+    ],
+
+    # 🟠 Medium Risk: SA003
+    "SA003": [
+        "رجعت لي بعض التهديدات من طليقي، بس هالمرة كانت عن طريق صديق مشترك.",
+        "أنا قاعدة أتوتر كثير من هالرسائل، بس أحاول أتماسك وما أرد.",
+        "وأقدر مساعدتك، الله يعافيك."
+    ],
+
+    # 🔴 High Risk: SA002
+    "SA002": [
+        "اليوم حاول يدخل علي البيت من الشباك، الحمد لله إن الجيران تدخلوا.",
+        "بلغت الشرطة، بس للحين ما ارتحت، أحس بخطر.",
+        "أرجوكِ بلغوا الجهات المختصة بأسرع وقت، وأحتاج أكون بمكان آمن الليلة."
+    ]
+}
+
+
 # --- DISPLAY PROFILE ---
 if st.session_state.summary:
     profile = st.session_state.summary.get("profile", {})
@@ -66,15 +91,8 @@ if st.session_state.summary:
             st.subheader("📚 Past Session Summaries")
             for i, summary in enumerate(summaries):
                 with st.expander(f"🗂 Summary {i + 1} — {summary.get('formattedTimestamp', '')} by {summary.get('specialistName', 'Unknown')}"):
-                    st.markdown(f"**Summary Text:** {summary.get('summaryText', 'N/A')}")
-                    st.markdown(f"**Specialist Notes:** {summary.get('specialistNotes', 'N/A')}")
-                    st.markdown(f"**Coaching Feedback:** {summary.get('coachingFeedback', 'N/A')}")
-                    st.markdown("**Coaching Tips:**")
-                    for tip in summary.get("coachingTips", []):
-                        st.markdown(f"- {tip}")
-                    st.markdown("**Next Steps:**")
-                    for step in summary.get("nextSteps", []):
-                        st.markdown(f"- {step}")
+                    full_text = summary.get("summaryText", "N/A")
+                    st.markdown(full_text)
 
 # --- MOCK MODE START BUTTON ---
 st.markdown("---")
@@ -82,14 +100,17 @@ col1, col2 = st.columns([1, 1])
 with col1:
     if st.button("🚀 Start Chatting with Mock Victim", use_container_width=True):
         st.session_state.mock_active = True
-        victim_openers = [
-            "أنا تعبت من كل يوم أرجع البيت وألقاه واقف تحت.",
-            "أخاف أتكلم أحد عن اللي يصير، بس ما أقدر أتحمل أكثر.",
-            "أحس ما في أمل، هو يراقبني دايم.",
-            "ما عاد أنام زين من كثر التوتر والخوف."
-        ]
-        victim_msg = random.choice(victim_openers)
-        st.session_state.chat.append({"sender": "👩 Victim", "message": victim_msg})
+        scenario = scenario_map.get(st.session_state.case_id, [])
+        if scenario:
+            # Add the first message only for now; the rest will follow in chat flow
+            st.session_state.chat.append({"sender": "👩 Victim", "message": scenario[0]})
+            st.session_state.scenario_queue = scenario[1:]  # store the rest
+        else:
+            # fallback to random if no case ID match
+            fallback = "مرحبًا، ودي أتكلم عن وضعي الحالي."
+            st.session_state.chat.append({"sender": "👩 Victim", "message": fallback})
+            st.session_state.scenario_queue = []
+
         
         # Set a flag to trigger agent response on next rerun
         st.session_state.need_agent_response = True
@@ -211,18 +232,20 @@ with chat_container:
     
     # Step 2: Handle victim response and agent coaching separately
     if st.session_state.get("need_victim_response", False):
-        # Clear the flag
+    # Clear the flag
         st.session_state.need_victim_response = False
-        
-        # Add victim response
-        victim_replies = [
-            "ما أعرف وش أسوي، كل يوم أحس بخوف أكثر.",
-            "أنا ماني مرتاحة، حتى مع وجود أمر الحماية.",
-            "هو يرسل لي رسائل من أرقام غريبة.",
-            "أبغى أطلع من هالبيت، بس ما عندي مكان أروح له."
-        ]
-        mock_reply = random.choice(victim_replies)
-        st.session_state.chat.append({"sender": "👩 Victim", "message": mock_reply})
+
+        # Pop the next victim message from the scenario queue (if any)
+        # Pop the next victim message from the scenario queue (if any)
+        if "scenario_queue" in st.session_state and st.session_state.scenario_queue:
+            next_text = st.session_state.scenario_queue.pop(0)
+            st.session_state.chat.append({"sender": "👩 Victim", "message": next_text})
+
+        else:
+            # fallback in case queue is empty
+            fallback = "أنا ما زلت أشعر بالقلق، بس شكراً لك."
+            st.session_state.chat.append({"sender": "👩 Victim", "message": fallback})
+
         
         # Set flag to trigger agent response on next rerun
         st.session_state.need_agent_response = True
@@ -256,7 +279,7 @@ if st.button("📤 End Session & Summarize"):
 if "generated_summary" in st.session_state:
     st.subheader("🧾 Session Summary (Edit if needed)")
     edited = st.text_area("Review and edit before saving", st.session_state.generated_summary, height=250)
-    specialist_name = st.text_input("👩‍⚕️ Specialist Name", value="Dr. Noura Al-Fayez")
+    specialist_name = st.text_input("👩‍⚕️ Specialist Name", value="Dr.Noura Khalid")
 
     if st.button("✅ Confirm and Save Summary"):
         if not edited.strip():
@@ -275,13 +298,11 @@ if "generated_summary" in st.session_state:
                         return full[start:end].strip() if end != -1 else full[start:].strip()
                     return full[start:].strip()
 
-                full = edited
-                summary_text = extract_between(full, "", "توصيات للمتابعة:").strip()
-                coaching_tips_block = extract_between(full, "توصيات للمتابعة:", "ملاحظة للأخصائي:").splitlines()
-                coaching_feedback = extract_between(full, "ملاحظة للأخصائي:")
+                summary_text = edited.strip()
+                coaching_tips = []
+                next_steps = []
+                coaching_feedback = ""
 
-                coaching_tips = [tip.strip("123٤٥٦.- ").strip() for tip in coaching_tips_block if tip.strip()]
-                next_steps = coaching_tips
 
                 save_payload = {
                     "caseId": st.session_state.case_id,
@@ -298,7 +319,8 @@ if "generated_summary" in st.session_state:
                 res = requests.post(SAVE_SUMMARY_URL, json=save_payload)
                 if res.status_code == 200:
                     st.success("✅ Summary saved successfully!")
-                    st.balloons()
+                    st.toast("Session summary stored securely.", icon="💾")
+
                 else:
                     st.error("❌ Failed to save summary.")
                     st.code(res.text)
